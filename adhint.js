@@ -43,7 +43,9 @@ Scope.prototype.noRefs = function() {
   var norefs = [];
   for (var i = 0, k; k = vars[i]; i++) {
     var v = this.vars[k];
-    if (v.refs === 0/* && [xxx].contains(v.type) */) {
+    if (v.refs === 0
+        /* && [xxx].contains(v.type) */ &&
+        v.node.getLineno() != -1) {  // TODO : extract default property
       norefs.push([k, v.node]);
     }
   }
@@ -258,6 +260,10 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.MUL:
     case Token.OR:
     case Token.SUB:
+    case Token.EQ:
+    case Token.NE:
+    case Token.SHEQ:
+    case Token.SHNE:
       addReferenced(parsed, node.getLeft(), scope);
       addReferenced(parsed, node.getRight(), scope);
       break;
@@ -275,6 +281,18 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.VOID:
       addReferenced(parsed, node.getOperand(), scope);
       break;
+
+      // Syntax.MemberExpression
+    case Token.GETELEM:
+      addReferenced(parsed, node.getTarget(), scope);
+      addReferenced(parsed, node.getElement(), scope);
+      break;
+
+      // Syntax.VariableDeclarator
+    case Token.EQ:
+    case Token.NE:
+    case Token.SHEQ:
+    case Token.SHNE:
 
       // Syntax.VariableDeclarator
     case Token.CONST:
@@ -341,10 +359,37 @@ function buildHoistingVisitoer(rootNode, scope, parsed) {
   };
 }
 
-function parse(source, file) {
+function defaultOptions() {
+  return {
+    defaultGlobal: [
+      // ECMAScript
+      'Array', 'String', 'RegExp', 'Function', 'Number', 'Boolean', 'Math',
+      'arguments', 'this', 'parseInt',
+
+      // DOM
+      'console', 'window', 'document', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'
+    ],
+    global: [],
+    checkUnrefType: ['var', 'arg']
+  };
+}
+
+function mixin(dest, src) {
+  for (var k in src) {
+    dest[k] = src[k];
+  }
+}
+
+function parse(source, file, opt_options) {
   var parsed = new Parsed(file);
-  var ast = new org.mozilla.javascript.Parser().parse(source, file, 0);
-  enterNewScope(ast, null, parsed, [/* TODO : default global property */]);
+  var ast = new org.mozilla.javascript.Parser().parse(source, file, 1);
+  var options = defaultOptions();
+  if (opt_options) {
+    mixin(options, opt_options);
+  }
+  enterNewScope(ast, null, parsed, options.defaultGlobal.concat(options.global).map(function(name) {
+    return new org.mozilla.javascript.ast.Name(-1, name);
+  }));
   return parsed;
 }
 
