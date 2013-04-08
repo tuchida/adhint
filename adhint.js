@@ -30,11 +30,10 @@ Scope.prototype.isDefThis = function(name) {
 };
 
 Scope.prototype.ref = function(name) {
-  if (hasOwnProperty(this.vars, name)) {
-    this.vars[name].refs++;
+  var v = this.vars[name];
+  if (v) {
+    v.refs++;
     return true;
-  } else if (this.parent) {
-    return this.parent.ref(name);
   }
   return false;
 };
