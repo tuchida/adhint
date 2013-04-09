@@ -43,10 +43,8 @@ Scope.prototype.noRefs = function() {
   var norefs = [];
   for (var i = 0, k; k = vars[i]; i++) {
     var v = this.vars[k];
-    if (v.refs === 0
-        /* && [xxx].contains(v.type) */ &&
-        v.node.getLineno() != -1) {  // TODO : extract default property
-      norefs.push([k, v.node]);
+    if (v.refs === 0) {
+      norefs.push([k, v.node, v.type]);
     }
   }
   return norefs;
@@ -71,11 +69,11 @@ function resolveVariableName(node, scope) {
   }
 }
 
-function addReferenced(parsed, node, scope) {
+function addReferenced(reporter, node, scope) {
   var varName = resolveVariableName(node);
   if (varName) {
     if (!scope.isDef(varName)) {
-      parsed.addUndefined(varName, node);
+      reporter.addUndefined(varName, node);
     }
     scope.ref(varName);
   }
@@ -90,14 +88,14 @@ function format(fmt, obj) {
 /**
  * @constructor
  */
-function Parsed(file) {
+function Reporter(file) {
   this.file = file;
   this.undefineds = [];
   this.noReferenced = [];
   this.doubleDefined = [];
 }
 
-Parsed.prototype.addUndefined = function(name, node) {
+Reporter.prototype.addUndefined = function(name, node) {
   this.undefineds.push({
     name: name,
     node: node.toSource(),
@@ -106,7 +104,7 @@ Parsed.prototype.addUndefined = function(name, node) {
   });
 };
 
-Parsed.prototype.addNoReferenced = function(name, node) {
+Reporter.prototype.addNoReferenced = function(name, node) {
   this.noReferenced.push({
     name: name,
     node: node.toSource(),
@@ -115,7 +113,7 @@ Parsed.prototype.addNoReferenced = function(name, node) {
   });
 };
 
-Parsed.prototype.addDoubleDefine = function(name, node) {
+Reporter.prototype.addDoubleDefine = function(name, node) {
   this.doubleDefined.push({
     name: name,
     node: node.toSource(),
@@ -124,7 +122,7 @@ Parsed.prototype.addDoubleDefine = function(name, node) {
   });
 };
 
-Parsed.prototype.toErrors = function() {
+Reporter.prototype.toErrors = function() {
   var errors = [];
   this.undefineds.forEach(function(obj) {
     errors.push(format('"{name}" is undefined, ("{node}", file:{file}:{line})', obj));
@@ -138,19 +136,38 @@ Parsed.prototype.toErrors = function() {
   return errors;
 };
 
-function enterNewScope(node, scope, parsed, args) {
+function Env(file, options) {
+  this.reporter = new Reporter(file);
+  this.options = options;
+}
+
+function enterNewScope(node, scope, args, noCheckArgs, env) {
   var newScope = new Scope(scope);
+  var checkUnrefVar = env.options.checkUnrefType.indexOf('var') >= 0;
+  var checkUnrefArg = env.options.checkUnrefType.indexOf('arg') >= 0;
+  var noCheck = Object.create(null);
   args.forEach(function(p) {
     newScope.def(p.getIdentifier(), p, VarType.ARG);
+    if (!checkUnrefArg) {
+      noCheck[p.getIdentifier()] = 1;
+    }
   });
-  node.visit(buildHoistingVisitoer(node, newScope, parsed));
-  node.visit(buildVisitor(node, newScope, parsed));
-  newScope.noRefs().forEach(function([name, node]) {
-    parsed.addNoReferenced(name, node);
+  noCheckArgs.forEach(function(p) {
+    newScope.def(p.getIdentifier(), p, VarType.ARG);
+    noCheck[p.getIdentifier()] = 1;
+  });
+  node.visit(buildHoistingVisitor(node, newScope, env));
+  node.visit(buildVisitor(node, newScope, env));
+  newScope.noRefs().forEach(function([name, node, type]) {
+    if (!noCheck[name] &&
+        ((type === VarType.VAR && checkUnrefVar) ||
+         (type === VarType.ARG && checkUnrefArg))) {
+      env.reporter.addNoReferenced(name, node);
+    }
   });
 }
 
-function buildVisitor(rootNode, scope, parsed) {
+function buildVisitor(rootNode, scope, env) {
   return function(node) {
     switch (node.type) {
       //  Syntax.AssignmentExpression
@@ -166,14 +183,14 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.ASSIGN_MUL:
     case Token.ASSIGN_DIV:
     case Token.ASSIGN_MOD:
-      addReferenced(parsed, node.getLeft(), scope);
-      addReferenced(parsed, node.getRight(), scope);
+      addReferenced(env.reporter, node.getLeft(), scope);
+      addReferenced(env.reporter, node.getRight(), scope);
       break;
 
       // Syntax.ArrayExpression
     case Token.ARRAYLIT:
       for (var e in Iterator(node.getElements())) {
-        addReferenced(parsed, e, scope);
+        addReferenced(env.reporter, e, scope);
       }
       break;
 
@@ -181,21 +198,21 @@ function buildVisitor(rootNode, scope, parsed) {
       // Syntax.NewExpression
     case Token.CALL:
     case Token.NEW:
-      addReferenced(parsed, node.getTarget(), scope);
+      addReferenced(env.reporter, node.getTarget(), scope);
       for (var arg in Iterator(node.getArguments())) {
-        addReferenced(parsed, arg, scope);
+        addReferenced(env.reporter, arg, scope);
       }
       break;
 
       // Syntax.ConditionalExpression
     case Token.HOOK:
-      addReferenced(parsed, node.getTestExpression(), scope);
-      addReferenced(parsed, node.getTrueExpression(), scope);
-      addReferenced(parsed, node.getFalseExpression(), scope);
+      addReferenced(env.reporter, node.getTestExpression(), scope);
+      addReferenced(env.reporter, node.getTrueExpression(), scope);
+      addReferenced(env.reporter, node.getFalseExpression(), scope);
       break;
 
     case Token.EXPR_RESULT:
-      addReferenced(parsed, node.getExpression(), scope);
+      addReferenced(env.reporter, node.getExpression(), scope);
       break;
 
       // Syntax.ExpressionStatement
@@ -205,19 +222,19 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.CASE:
     case Token.SWITCH:
     case Token.THROW:
-      addReferenced(parsed, node.getExpression(), scope);
+      addReferenced(env.reporter, node.getExpression(), scope);
       break;
 
       // Syntax.ForInStatement
       // Syntax.ForStatement
     case Token.FOR:
       if (node instanceof org.mozilla.javascript.ast.ForInLoop) {
-        addReferenced(parsed, node.getIterator(), scope);
-        addReferenced(parsed, node.getIteratedObject(), scope);
+        addReferenced(env.reporter, node.getIterator(), scope);
+        addReferenced(env.reporter, node.getIteratedObject(), scope);
       } else {
-        addReferenced(parsed, node.getInitializer(), scope);
-        addReferenced(parsed, node.getCondition(), scope);
-        addReferenced(parsed, node.getIncrement(), scope);
+        addReferenced(env.reporter, node.getInitializer(), scope);
+        addReferenced(env.reporter, node.getCondition(), scope);
+        addReferenced(env.reporter, node.getIncrement(), scope);
       }
       break;
 
@@ -227,19 +244,19 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.IF:
     case Token.WHILE:
     case Token.DO:
-      addReferenced(parsed, node.getCondition(), scope);
+      addReferenced(env.reporter, node.getCondition(), scope);
       break;
 
       // Syntax.LogicalExpression
 
       // Syntax.Property
     case Token.COLON:
-      addReferenced(parsed, node.getRight(), scope);
+      addReferenced(env.reporter, node.getRight(), scope);
       break;
 
       // Syntax.ReturnStatement
     case Token.RETURN:
-      addReferenced(parsed, node.getReturnValue(), scope);
+      addReferenced(env.reporter, node.getReturnValue(), scope);
       break;
 
       // Syntax.BinaryExpression
@@ -264,8 +281,8 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.NE:
     case Token.SHEQ:
     case Token.SHNE:
-      addReferenced(parsed, node.getLeft(), scope);
-      addReferenced(parsed, node.getRight(), scope);
+      addReferenced(env.reporter, node.getLeft(), scope);
+      addReferenced(env.reporter, node.getRight(), scope);
       break;
 
       // Syntax.UnaryExpression
@@ -279,13 +296,13 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.POS:
     case Token.TYPEOF:
     case Token.VOID:
-      addReferenced(parsed, node.getOperand(), scope);
+      addReferenced(env.reporter, node.getOperand(), scope);
       break;
 
       // Syntax.MemberExpression
     case Token.GETELEM:
-      addReferenced(parsed, node.getTarget(), scope);
-      addReferenced(parsed, node.getElement(), scope);
+      addReferenced(env.reporter, node.getTarget(), scope);
+      addReferenced(env.reporter, node.getElement(), scope);
       break;
 
       // Syntax.VariableDeclarator
@@ -298,7 +315,7 @@ function buildVisitor(rootNode, scope, parsed) {
     case Token.CONST:
     case Token.VAR:
       if (node instanceof org.mozilla.javascript.ast.VariableInitializer) {
-        addReferenced(parsed, node.getInitializer(), scope);
+        addReferenced(env.reporter, node.getInitializer(), scope);
       }
       break;
 
@@ -311,14 +328,14 @@ function buildVisitor(rootNode, scope, parsed) {
             args.push(fnName);
           }
         }
-        enterNewScope(node, scope, parsed, args);
+        enterNewScope(node, scope, args, [], env);
         return false;
       }
       break;
 
     case Token.CATCH:
       if (rootNode !== node) {
-        enterNewScope(node, scope, parsed, [node.getVarName()]);
+        enterNewScope(node, scope, [node.getVarName()], [], env);
         return false;
       }
       break;
@@ -328,7 +345,7 @@ function buildVisitor(rootNode, scope, parsed) {
   };
 }
 
-function buildHoistingVisitoer(rootNode, scope, parsed) {
+function buildHoistingVisitor(rootNode, scope, env) {
   return function(node) {
     switch (node.type) {
       // Syntax.VariableDeclarator
@@ -337,7 +354,7 @@ function buildHoistingVisitoer(rootNode, scope, parsed) {
       if (node instanceof org.mozilla.javascript.ast.VariableInitializer) {
         var identName = node.getTarget().getIdentifier();
         if (scope.isDefThis(identName)) {
-          parsed.addDoubleDefine(identName, node);
+          env.reporter.addDoubleDefine(identName, node);
         }
         scope.def(identName, node, VarType.VAR);
       }
@@ -364,7 +381,8 @@ function defaultOptions() {
     defaultGlobal: [
       // ECMAScript
       'Array', 'String', 'RegExp', 'Function', 'Number', 'Boolean', 'Math',
-      'arguments', 'this', 'parseInt',
+      'arguments', 'this', 'undefined',
+      'parseInt', 'isNaN',
 
       // DOM
       'console', 'window', 'document', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'
@@ -381,16 +399,17 @@ function mixin(dest, src) {
 }
 
 function parse(source, file, opt_options) {
-  var parsed = new Parsed(file);
   var ast = new org.mozilla.javascript.Parser().parse(source, file, 1);
   var options = defaultOptions();
   if (opt_options) {
     mixin(options, opt_options);
   }
-  enterNewScope(ast, null, parsed, options.defaultGlobal.concat(options.global).map(function(name) {
+  var env = new Env(file, options);
+  var args = options.defaultGlobal.concat(options.global).map(function(name) {
     return new org.mozilla.javascript.ast.Name(-1, name);
-  }));
-  return parsed;
+  });
+  enterNewScope(ast, null, [], args, env);
+  return env.reporter;
 }
 
 exports.parse = parse;
