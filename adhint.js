@@ -380,12 +380,17 @@ function defaultOptions() {
   return {
     defaultGlobal: [
       // ECMAScript
-      'Array', 'String', 'RegExp', 'Function', 'Number', 'Boolean', 'Math',
+      'Array', 'String', 'RegExp', 'Function', 'Number', 'Boolean', 'Date', 'Object', 'Error',
+      'Math', 'JSON',
       'arguments', 'this', 'undefined',
-      'parseInt', 'isNaN',
+      'parseInt', 'parseFloat', 'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent',
+      'isNaN', 'eval',
 
       // DOM
-      'console', 'window', 'document', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'
+      'console', 'window', 'document', 'location', 'navigator',
+      'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
+      'Image',
+      'DOMParser', 'XMLSerializer', 'DOMImplementationRegistry', 'Packages'
     ],
     global: [],
     checkUnrefType: ['var', 'arg']
