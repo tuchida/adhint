@@ -1,4 +1,7 @@
+// https://github.com/tuchida/adhint
+
 var Token = org.mozilla.javascript.Token;
+// http://d.hatena.ne.jp/teramako/20111231/p1
 var bind = Function.prototype.bind;
 var uncurryThis = bind.bind(bind.call);
 var hasOwnProperty = uncurryThis(Object.prototype.hasOwnProperty);
@@ -390,7 +393,7 @@ function defaultOptions() {
       'isNaN', 'eval',
 
       // DOM
-      'console', 'window', 'document', 'location', 'navigator',
+      'console', 'window', 'document', 'location', 'navigator', 'localStorage',
       'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
       'Image',
       'DOMParser', 'XMLSerializer', 'DOMImplementationRegistry', 'Packages'
