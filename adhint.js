@@ -281,6 +281,9 @@ function buildVisitor(rootNode, scope, env) {
     case Token.NE:
     case Token.SHEQ:
     case Token.SHNE:
+    case Token.BITOR:
+    case Token.BITXOR:
+    case Token.BITAND:
       addReferenced(env.reporter, node.getLeft(), scope);
       addReferenced(env.reporter, node.getRight(), scope);
       break;
