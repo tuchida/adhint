@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="adhint" basedir=".">
+
+  <property name="rhino.jar" value="../rhino1_7R4/js.jar" />
+  <property name="js.src.dir" value="ad_j/WebContent/ad/js" />
+
+  <target name="adhint">
+    <java jar="${rhino.jar}" fork="true" dir="tools" failonerror="true">
+      <arg value="-modules" />
+      <arg value="../adhint.js" />
+      <arg value="bin.js" />
+      <arg value="${js.src.dir}" />
+      <arg value="options.json" />
+    </java>
+  </target>
+
+  <target name="test">
+    <java jar="${rhino.jar}" fork="true" dir="." failonerror="true">
+      <arg value="-require" />
+      <arg value="-debug" />
+      <arg value="test/test.js" />
+    </java>
+  </target>
+
+</project>

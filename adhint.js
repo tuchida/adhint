@@ -388,7 +388,7 @@ function defaultOptions() {
       // ECMAScript
       'Array', 'String', 'RegExp', 'Function', 'Number', 'Boolean', 'Date', 'Object', 'Error',
       'Math', 'JSON',
-      'arguments', 'this', 'undefined',
+      'arguments', 'this', 'undefined', 'NaN', 'Infinity',
       'parseInt', 'parseFloat', 'encodeURI', 'decodeURI', 'encodeURIComponent', 'decodeURIComponent',
       'isNaN', 'eval',
 

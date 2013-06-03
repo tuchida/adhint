@@ -1,0 +1,4 @@
+{
+  "global": ["AD", "Ext", "_", "CodeMirror"],
+  "checkUnrefType": ["var"]
+}
